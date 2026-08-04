@@ -1,0 +1,123 @@
+{
+  "mode": "multi",
+  "induced_userness_by_alpha": {
+    "-0.2": 6.926459540992913e-09,
+    "0.0": 0.3064435862004757,
+    "0.05": 0.7563562452793121,
+    "0.1": 0.9324527204036712,
+    "0.15": 0.9752762675285339,
+    "0.2": 0.989555436372757
+  },
+  "dose_response": {
+    "arm": "d_user",
+    "alphas": [
+      -0.2,
+      0.0,
+      0.05,
+      0.1,
+      0.15,
+      0.2
+    ],
+    "n_pages": 48,
+    "slope_mean": 1.3072916666666667,
+    "slope_t": 11.475110875678174,
+    "p_trend_onesided": 1.5715900105728001e-15,
+    "rate_by_alpha": {
+      "-0.2": 0.25,
+      "0.0": 0.5260416666666666,
+      "0.05": 0.6354166666666666,
+      "0.1": 0.640625,
+      "0.15": 0.734375,
+      "0.2": 0.7604166666666666
+    },
+    "gee_alpha_coef": 5.7355313448162,
+    "gee_alpha_ci95": [
+      4.570043615779847,
+      6.901019073852554
+    ],
+    "gee_alpha_p": 5.147941028004706e-22
+  },
+  "headline_contrast": {
+    "arm": "d_user",
+    "alpha_star": 0.2,
+    "rate_a0": 0.5260416666666666,
+    "rate_astar": 0.7604166666666666,
+    "delta_pp": 23.4375,
+    "t": 5.907705992939214,
+    "p_onesided": 1.8558553396433672e-07
+  },
+  "specificity": {
+    "alpha_star": 0.2,
+    "contrasts": [
+      {
+        "contrast": "d_user - d_tool",
+        "delta_pp": 53.125000000000014,
+        "p_onesided": 1.6036777865062394e-18
+      },
+      {
+        "contrast": "d_user - d_assistant",
+        "delta_pp": 51.736111111111114,
+        "p_onesided": 2.5754090217901958e-14
+      },
+      {
+        "contrast": "d_user - d_cot",
+        "delta_pp": 14.930555555555557,
+        "p_onesided": 0.0023037619875221713
+      },
+      {
+        "contrast": "d_user - d_system",
+        "delta_pp": 35.76388888888889,
+        "p_onesided": 1.181837897288306e-09
+      },
+      {
+        "contrast": "d_user - rand0",
+        "delta_pp": 17.708333333333336,
+        "p_onesided": 4.08008965950766e-05
+      },
+      {
+        "contrast": "d_user - rand1",
+        "delta_pp": 26.73611111111111,
+        "p_onesided": 2.7796013075053484e-05
+      },
+      {
+        "contrast": "d_user - u_hat_gamma",
+        "delta_pp": -14.23611111111111,
+        "p_onesided": 0.9981659912345642
+      },
+      {
+        "contrast": "d_user - offcommand",
+        "delta_pp": 28.125000000000007,
+        "p_onesided": 1.8907406115046062e-05
+      }
+    ]
+  },
+  "graded_role_pattern": [
+    {
+      "role": "user",
+      "attack_astar": 0.7604166666666666,
+      "effect_pp": 23.4375
+    },
+    {
+      "role": "cot",
+      "attack_astar": 0.6111111111111112,
+      "effect_pp": 8.506944444444454
+    },
+    {
+      "role": "system",
+      "attack_astar": 0.4027777777777778,
+      "effect_pp": -12.326388888888884
+    },
+    {
+      "role": "assistant",
+      "attack_astar": 0.24305555555555555,
+      "effect_pp": -28.298611111111104
+    },
+    {
+      "role": "tool",
+      "attack_astar": 0.22916666666666666,
+      "effect_pp": -29.6875
+    }
+  ],
+  "H1_pass": true,
+  "H2_pass": false
+}
