@@ -1,0 +1,26 @@
+# Original run: Python 3.11.13, torch 2.8.0+cu128, transformers 4.56.2, CUDA 12.8, NVIDIA H200.
+# This file pins the cross-platform core. Running the model itself additionally needs the
+# CUDA MXFP4 kernels (`pip install kernels triton`) and a ~40GB+ GPU; see README.
+
+torch==2.8.0
+transformers==4.56.2
+accelerate>=1.0
+
+# Loads the RunPod API token from .env for runpod_check.py (provisioning only; not the notebook).
+python-dotenv>=1.0
+
+# Required on CUDA for native gpt-oss MXFP4 loading on RunPod.
+kernels
+triton
+
+numpy>=1.26,<3
+pandas>=2.2
+
+# The probe is fit with LogisticRegression(multi_class="multinomial"), which sklearn removed
+# in 1.8. Do not relax this upper bound without editing section 5 of the notebook.
+scikit-learn>=1.5,<1.8
+
+datasets>=3.0
+plotly>=5.24
+ipykernel>=6.29
+jupyter>=1.1
