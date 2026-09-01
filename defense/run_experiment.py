@@ -34,6 +34,9 @@ from defense.rollout import (GatedSteerDefense, NoDefense, SpanSteerDefense,
 from utils.loader import load_model_and_tokenizer
 
 DEVICE = os.environ.get("DEVICE", "cuda:0")
+# None lets the loader try its fallback chain (flash-attn3 -> sdpa -> eager)
+# and keep the first that loads. Pin one with ATTN=eager if you need to.
+ATTN = os.environ.get("ATTN") or None
 OUT_CSV = os.environ.get("OUT_CSV", "outputs/defense/results.csv")
 
 CSV_FIELDS = [
@@ -47,7 +50,7 @@ CSV_FIELDS = [
 
 def _load():
     tokenizer, model, _, _ = load_model_and_tokenizer(
-        "gptoss-20b", device=DEVICE, attn_implementation="eager")
+        "gptoss-20b", device=DEVICE, attn_implementation=ATTN)
     tokenizer.padding_side = "left"
     probe = pickle.load(open(config.PROBE_PICKLE, "rb"))["clf"]
     ids = (tokenizer.convert_tokens_to_ids("<|call|>"),
@@ -90,19 +93,37 @@ def _direction(model, tokenizer):
     return d_user, rand / rand.norm()
 
 
+TRAJ_PATH = os.environ.get("OUT_TRAJ", "outputs/defense/trajectories.jsonl")
+
+
 class Writer:
     def __init__(self, path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.f = open(path, "w", newline="")
         self.w = csv.DictWriter(self.f, fieldnames=CSV_FIELDS)
         self.w.writeheader()
+        # Full per-trajectory transcripts, like the base repo's trajectories.jsonl.
+        # Required for sanity-checking: a summary row cannot tell you WHY an arm
+        # behaved as it did -- only the turns can.
+        self.tf = open(TRAJ_PATH, "w")
 
     def row(self, **kw):
         self.w.writerow({k: kw.get(k, "") for k in CSV_FIELDS})
         self.f.flush()
 
+    def trajectories(self, meta, recs):
+        import json as _json
+        for sample, r in enumerate(recs):
+            rec = {**meta, "sample": sample, "attack": r["attack"],
+                   "outcome": r["outcome"], "n_steps": r["n_steps"],
+                   "steered_tokens": r["steered_tokens"],
+                   "degenerate": r["degenerate"], "turns": r["turns"]}
+            self.tf.write(_json.dumps(rec) + "\n")
+        self.tf.flush()
+
     def close(self):
         self.f.close()
+        self.tf.close()
 
 
 def _run_arm(model, tokenizer, steer_module, defense, page, ids, n, seed=config.SEED):
@@ -118,6 +139,8 @@ def _emit(writer, step, arm, recs, *, variant="", family="", bucket="",
     rubric_mean = (sum(rubric_scores) / len(rubric_scores)) if rubric_scores else ""
     writer.row(step=step, arm=arm, variant=variant, family=family, bucket=bucket,
                coeff=coeff, threshold=threshold, rubric_mean=rubric_mean, warning=warn, **row)
+    writer.trajectories({"step": step, "arm": arm, "variant": variant, "family": family,
+                         "bucket": bucket, "coeff": coeff, "threshold": threshold}, recs)
     asr = row.get("asr", float("nan"))
     tag = "  !! " + warn if warn else ""
     print(f"  [{step}] {arm:32s} n={row.get('n',0):>2} ASR={asr:.2f} "
