@@ -1,111 +1,41 @@
 """Masked steering: apply the userness direction to an arbitrary set of token
 positions, rather than to one contiguous span.
-
-WHY THIS FILE EXISTS
---------------------
-The base experiment steers a single contiguous span -- the injected command --
-described by one (start, end) pair per batch row. That is enough for the "oracle"
-variant, which assumes you already know where the injection sits.
-
-No real defender knows that. The deployable variants need to steer either every
-token of the tool block (blind) or a scattered set of positions the probe flagged
-(gated). Scattered positions cannot be described by a start and an end, so the
-representation has to change from a SPAN to a MASK: one True/False flag per token
-position.
-
-That sounds like a small change and is not. Positions are in PADDED coordinates,
-which shift depending on how the batch was padded, and if the bookkeeping is off
-by a few tokens you will steer the wrong tokens and get numbers that look
-completely plausible and mean nothing. That failure is silent. This is why this
-file is hand-written and covered by tests rather than generated.
-
-THE MATH (unchanged from the base experiment)
----------------------------------------------
-For every selected token position p:
-
-    h'_p = h_p + c * ||h_p|| * v̂
-
-where h_p is that token's residual vector, ||h_p|| is its Euclidean norm, v̂ is
-the unit steering direction, and c is the dose. Scaling by each token's own norm
-is what makes c dimensionless: the relative size of the change,
-||h'_p - h_p|| / ||h_p||, is exactly |c| for every token regardless of how large
-that token's activations happen to be. That property is what lets "dose" mean the
-same thing across positions -- and it is the first thing the tests check.
-
-Unselected positions must come out bit-for-bit identical to the input.
-
-Run the tests with:
-    .venv/bin/python -m pytest defense/tests/test_steering.py -v
 """
 
 import torch
 
-
 def mask_from_spans(spans, batch_size, seq_len, device=None):
     """Convert the old span representation into the new mask representation.
 
-    This exists so the new code can be proven equivalent to the known-good base
-    experiment: a mask built from a span must steer exactly the tokens the old
-    span-based hook steered. The test suite relies on that equivalence.
-
-    Args:
-        spans:      list of (start, end) tuples, one per batch row, in PADDED
-                    coordinates. `end` is EXCLUSIVE, matching Python slicing.
-                    A row with end <= start selects nothing.
-        batch_size: number of rows, B.
-        seq_len:    sequence length, T.
-        device:     torch device for the result (None = CPU).
-
     Returns:
         (B, T) bool tensor. True at positions inside that row's span.
-
-    Raises:
-        ValueError: if len(spans) != batch_size.
-
-    Hint: start from torch.zeros(..., dtype=torch.bool) and fill each row's slice.
     """
-    raise NotImplementedError("mask_from_spans")
-
+    if len(spans) != batch_size: 
+        raise ValueError(f"expected {batch_size} spans, got {len(spans)}")
+    masks = torch.zeros(batch_size, seq_len, dtype=torch.bool, device=device)
+    for b in range(batch_size): 
+        start, end = spans[b]
+        if end > start: 
+            masks[b, start:end] = True 
+    return masks 
 
 def apply_masked_steering(hidden, mask, direction, coeff):
     """Add `coeff * ||h|| * unit(direction)` to every position where mask is True.
-
-    This is the pure-math core of the intervention, deliberately separated from
-    the forward-hook plumbing below so it can be tested without a model.
-
-    Args:
-        hidden:    (B, T, D) tensor. May be bfloat16 or float16 on the real model,
-                   so do the arithmetic in float32 and cast the result back to
-                   hidden's original dtype. Low-precision norms are inaccurate
-                   enough to break the dose property the tests check.
-        mask:      (B, T) bool tensor. True = steer this position.
-        direction: (D,) tensor. Normalized internally, so callers may pass a
-                   non-unit vector and get the same answer.
-        coeff:     float dose. Negative steers away from the direction.
-
-    Returns:
-        A NEW (B, T, D) tensor with hidden's dtype. Does not modify `hidden`.
-        Positions where mask is False are bit-for-bit identical to the input.
-
-    Raises:
-        ValueError: if mask's shape is not hidden.shape[:2], or direction's length
-                    is not hidden.shape[-1]. Raise loudly here -- a silently
-                    misaligned mask is the exact bug this file is defending
-                    against, and it is far better to crash than to steer the wrong
-                    tokens and report the result.
-
-    Fast paths: if coeff == 0.0 or the mask selects nothing, return a copy of
-    hidden unchanged.
-
-    Hints:
-      - Per-token norms: hidden.norm(dim=-1, keepdim=True) gives (B, T, 1).
-      - (B,T,1) * (D,) broadcasts to (B,T,D), which is the whole delta at once --
-        no Python loop over rows or positions is needed.
-      - torch.where(mask.unsqueeze(-1), steered, original) applies the mask
-        without touching unselected positions.
     """
-    raise NotImplementedError("apply_masked_steering")
-
+    if mask.shape != hidden.shape[:2]: 
+        raise ValueError(f"Expected mask tensor of shape {hidden.shape[:2]}, got {mask.shape}")
+    if hidden.shape[-1] != direction.shape[-1]: 
+        raise ValueError(f"Expected d_user vector of shape {hidden.shape[-1]}, got {direction.shape}")
+    if not mask.any() or coeff == 0.0: 
+        return hidden.clone() 
+    
+    h = hidden.to(torch.float32)
+    unit = direction / direction.norm() 
+    norms = h.norm(dim=-1, keepdim=True)
+    delta = norms * unit * coeff 
+    steered = torch.where(mask.unsqueeze(-1), h + delta, h)
+    steered = steered.to(hidden.dtype)
+    return steered 
 
 class MaskedSteeringHook:
     """Forward hook that applies masked steering to a layer's output.
@@ -160,4 +90,28 @@ class MaskedSteeringHook:
         same is fine and avoids an allocation: compute the steered values with
         apply_masked_steering, then write them back into the existing tensor.
         """
-        raise NotImplementedError("MaskedSteeringHook.__call__")
+        hidden = output[0] if isinstance(output, tuple) else output
+
+        # Decode steps and a zero dose are both expected no-ops. These are checked
+        # BEFORE the mask shape, because a one-token decode pass legitimately does
+        # not match a prefill-shaped mask.
+        if hidden.shape[1] == 1 or self.coeff == 0.0:
+            return output
+
+        if tuple(hidden.shape[:2]) != tuple(self.mask.shape):
+            raise ValueError(
+                f"mask shape {tuple(self.mask.shape)} does not match prefill sequence "
+                f"{tuple(hidden.shape[:2])}. The mask was built for a different "
+                f"sequence; rebuild it rather than reshaping it here."
+            )
+
+        steered = apply_masked_steering(
+            hidden, self.mask.to(hidden.device), self.direction, self.coeff)
+        hidden.copy_(steered)
+        return output
+
+    def steered_token_count(self):
+        """How many positions this hook will steer. Logged per step so a defense
+        that silently fails to apply is visible in the results rather than
+        indistinguishable from a weak defense."""
+        return int(self.mask.sum()) if self.coeff != 0.0 else 0
