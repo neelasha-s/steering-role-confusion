@@ -55,8 +55,11 @@ VARIANTS = (
 DOSE_GRID = (-0.1, -0.2, -0.4)
 
 # Probe thresholds for the gated variant. Each (threshold, dose) pair is one point
-# on the tradeoff curve.
-THRESHOLD_GRID = (0.5, 0.7, 0.9)
+# on the tradeoff curve. Lowered from (0.5,0.7,0.9) after the spike showed gated
+# steered too few tokens to suppress: a lower threshold flags MORE injection
+# tokens (toward blind's coverage) at the cost of flagging more benign ones -- the
+# tradeoff the curve is meant to capture. 0.9 dropped as both weakest and costliest.
+THRESHOLD_GRID = (0.3, 0.5, 0.7)
 
 
 # --- Sampling -------------------------------------------------------------------
