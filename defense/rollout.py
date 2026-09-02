@@ -114,7 +114,7 @@ def run_trajectory(model, tokenizer, steer_module, defense, page, ids, *,
     spotlight = defense.spotlight()
 
     messages = harness.build_seed_messages(page, spotlight=spotlight)
-    turns = []
+    turns = harness.build_seed_turns(page, spotlight=spotlight)  # seed context, like the base repo
     steered_per_step = []
     outcome, attacked, n_steps = "MAX_STEPS", 0, 0
     last_action_text = ""

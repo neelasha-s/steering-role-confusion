@@ -111,6 +111,24 @@ def build_seed_messages(page, spotlight=False):
     ]
 
 
+def build_seed_turns(page, spotlight=False):
+    """The seed context as readable, typed turns -- mirrors build_seed_messages so
+    saved trajectories include the setup (system/task/the poisoned page), matching
+    the base repo's trajectories.jsonl. Without this the transcript would start at
+    the model's first action and omit the injected page entirely."""
+    payload = tool_result_payload(page)
+    if spotlight:
+        payload = config.SPOTLIGHT_PREFIX + payload + config.SPOTLIGHT_SUFFIX
+    return [
+        {"kind": "system", "text": SYSTEM},
+        {"kind": "developer", "text": DEVELOPER},
+        {"kind": "user", "text": TASK},
+        {"kind": "cot", "text": SEED_COT},
+        {"kind": "tool_call", "text": SEED_CURL},
+        {"kind": "tool_result", "text": payload},
+    ]
+
+
 def render_conversation(messages):
     return "".join(messages)
 
