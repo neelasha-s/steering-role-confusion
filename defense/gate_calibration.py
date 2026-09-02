@@ -39,6 +39,9 @@ from defense import config, harness
 from utils.loader import load_model_and_tokenizer
 
 DEVICE = os.environ.get("DEVICE", "cuda:0")
+# None lets the loader try its fallback chain (flash-attn3 -> sdpa -> eager)
+# and keep the first that loads. Pin one with ATTN=eager if you need to.
+ATTN = os.environ.get("ATTN") or None
 
 
 def rms_normalize(x):
@@ -80,7 +83,7 @@ def describe(name, probs):
 
 def main():
     tokenizer, model, _, _ = load_model_and_tokenizer(
-        "gptoss-20b", device=DEVICE, attn_implementation="eager")
+        "gptoss-20b", device=DEVICE, attn_implementation=ATTN)
     probe = pickle.load(open(config.PROBE_PICKLE, "rb"))["clf"]
     probe_module = model.model.layers[config.PROBE_LAYER]
 
