@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from defense import config, harness, injections, metrics
 from defense.rollout import (GatedSteerDefense, NoDefense, SpanSteerDefense,
-                             SpotlightDefense, run_trajectory)
+                             SpotlightDefense, run_arm_batched)
 from utils.loader import load_model_and_tokenizer
 
 DEVICE = os.environ.get("DEVICE", "cuda:0")
@@ -127,9 +127,10 @@ class Writer:
 
 
 def _run_arm(model, tokenizer, steer_module, defense, page, ids, n, seed=config.SEED):
-    recs = [run_trajectory(model, tokenizer, steer_module, defense, page, ids,
-                           gen_seed=seed + i) for i in range(n)]
-    return recs
+    # Batched: MICRO_BATCH trajectories per generate() call (config.py). The
+    # unbatched run_trajectory is ~5x too slow to finish the sweep in budget.
+    return run_arm_batched(model, tokenizer, steer_module, defense, page, ids, n,
+                           micro_batch=config.MICRO_BATCH, gen_seed=seed)
 
 
 def _emit(writer, step, arm, recs, *, variant="", family="", bucket="",
