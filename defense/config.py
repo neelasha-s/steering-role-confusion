@@ -67,6 +67,11 @@ N_SWEEP = 30      # per cell while sweeping the grid
 N_OPERATING = 50  # at the two or three operating points actually being compared
 SEED = 123
 
+# Trajectories per generate() call. Batch 1 is ~5x too slow to finish the sweep in
+# budget. The base notebook used 8 under eager attention (~10-13 GB peak); the
+# gated variant adds one probe forward pass per step, so leave headroom. Lower it
+# if you OOM, raise it if you have room.
+MICRO_BATCH = 8
 
 # --- The spotlighting baseline --------------------------------------------------
 # Wrapped around the tool result. One string, one arm: if subtracting d_user does

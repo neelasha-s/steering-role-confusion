@@ -156,8 +156,68 @@ def find_span(tokenizer, prompt, substring):
     return (min(idx), max(idx) + 1) if idx else (0, 0)
 
 
+def _offsets(tokenizer, prompt):
+    return tokenizer(prompt, add_special_tokens=False, return_offsets_mapping=True)["offset_mapping"]
+
+
+def _char_range_to_span(offsets, start_char, end_char):
+    idx = [i for i, (s, e) in enumerate(offsets) if e > start_char and s < end_char]
+    return (min(idx), max(idx) + 1) if idx else None
+
+
+def find_all_spans(tokenizer, prompt, substring):
+    """Token spans of EVERY occurrence of `substring`, unpadded coordinates.
+
+    `find_span` returns only the first occurrence. That is wrong for a defense:
+    when the agent refetches the poisoned page, the injection appears a second
+    time in a later tool result, and a mask built from the first occurrence leaves
+    that copy unsteered. Use this for anything that must cover all copies.
+    """
+    if not substring:
+        return []
+    offsets = _offsets(tokenizer, prompt)
+    spans, start = [], 0
+    while True:
+        i = prompt.find(substring, start)
+        if i < 0:
+            break
+        span = _char_range_to_span(offsets, i, i + len(substring))
+        if span:
+            spans.append(span)
+        start = i + len(substring)
+    return spans
+
+
+TOOL_RESULT_HEADER = "<|start|>functions.bash to=assistant<|channel|>commentary<|message|>"
+
+
+def all_tool_block_spans(tokenizer, prompt):
+    """Token span of the body of EVERY tool result in the transcript.
+
+    This is what "blind" honestly means: a defender who knows only "this is tool
+    output" steers all of it -- the seed page AND anything the agent fetched later,
+    including a refetched copy of the poisoned page. Unpadded coordinates.
+    """
+    offsets = _offsets(tokenizer, prompt)
+    spans, start = [], 0
+    while True:
+        h = prompt.find(TOOL_RESULT_HEADER, start)
+        if h < 0:
+            break
+        body_start = h + len(TOOL_RESULT_HEADER)
+        body_end = prompt.find("<|end|>", body_start)
+        if body_end < 0:
+            body_end = len(prompt)
+        span = _char_range_to_span(offsets, body_start, body_end)
+        if span:
+            spans.append(span)
+        start = body_end
+    return spans
+
+
 def command_span(tokenizer, prompt):
-    """Span of the injected command only -- the ORACLE variant's target."""
+    """Span of the FIRST occurrence of the injected command. Prefer
+    `find_all_spans(tokenizer, prompt, INJECTION)` for steering."""
     return find_span(tokenizer, prompt, INJECTION)
 
 
