@@ -143,6 +143,24 @@ def main():
     print(f"\nseparation AUC (injected vs benign): {auc:.3f}")
     print("  0.50 = the probe cannot distinguish them at any threshold")
 
+    # Per-token dump for the probe heatmap (defense/figures.py, fig3): the score
+    # of every token in the poisoned tool block, the token strings, and where the
+    # injection sits. This is the same forward pass -- no extra compute.
+    import json
+    enc = tokenizer([poisoned_prompt], add_special_tokens=False, return_tensors="pt")
+    pad = enc["input_ids"].shape[1] - int(enc["attention_mask"].sum())
+    ids = enc["input_ids"][0, poisoned_block[0] + pad:poisoned_block[1] + pad].tolist()
+    os.makedirs("outputs/defense", exist_ok=True)
+    json.dump({
+        "scores": [float(x) for x in poisoned_all],
+        "tokens": [tokenizer.decode([i]) for i in ids],
+        "inj_lo": int(lo), "inj_hi": int(hi),
+        "clean_scores": [float(x) for x in benign],
+        "thresholds": list(config.THRESHOLD_GRID),
+        "auc": float(auc),
+    }, open("outputs/defense/probe_scores.json", "w"))
+    print("wrote outputs/defense/probe_scores.json (for fig3)")
+
     print("\nVERDICT")
     fired = [float((benign > t).mean()) for t in config.THRESHOLD_GRID]
     if auc < 0.65:
